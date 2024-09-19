@@ -2,38 +2,38 @@
 
 Adafruit_LiquidCrystal lcd(0);
 
-int analogPin = 0;
-int val = 0;
-const int buttonStart = 2;
-const int buttonInfo = 4;
-const int numSamples = 100;
-int *signalData = new int[numSamples];
+int pinAnalogico = 0;                
+int valorLeido = 0;                  
+const int botonInicio = 2;           
+const int botonInfo = 4;             
+const int numMuestras = 100;         
+int *datosSenal = new int[numMuestras];
 
 void setup() {
-    pinMode(buttonStart, INPUT);
-    pinMode(buttonInfo, INPUT);
+    pinMode(botonInicio, INPUT);
+    pinMode(botonInfo, INPUT);
     lcd.begin(16, 2);
     lcd.print("Iniciando...");
     Serial.begin(9600);
 }
 
 void loop() {
-    val = analogRead(analogPin);
-    Serial.println(val);
+    valorLeido = analogRead(pinAnalogico);
+    Serial.println(valorLeido);
     
-    if (digitalRead(buttonStart) == HIGH) {
+    if (digitalRead(botonInicio) == HIGH) {
         lcd.clear();
         lcd.print("Adquiriendo...");
-        captureSignalData(signalData, numSamples);
+        capturarDatosSenal(datosSenal, numMuestras);
     }
   
-    if (digitalRead(buttonInfo) == HIGH) {
+    if (digitalRead(botonInfo) == HIGH) {
         lcd.clear();
         lcd.print("Procesando...");
         
-        float frecuencia = calcularFrecuencia(signalData, numSamples);
-        float amplitud = calcularAmplitud(signalData, numSamples);
-        identificarOnda(signalData, numSamples);
+        float frecuencia = calcularFrecuencia(datosSenal, numMuestras);
+        float amplitud = calcularAmplitud(datosSenal, numMuestras);
+        identificarOnda(datosSenal, numMuestras);
 
         lcd.setCursor(0, 0);
         lcd.print("Freq: ");
@@ -49,96 +49,117 @@ void loop() {
     }
 }
 
-void captureSignalData(int *data, int size) {
-    for (int i = 0; i < size; i++) {
-        data[i] = analogRead(analogPin);
+void capturarDatosSenal(int *datos, int tamano) {
+    for (int i = 0; i < tamano; i++) {
+        datos[i] = analogRead(pinAnalogico);
         delay(5);
     }
 }
 
-float calcularFrecuencia(int *data, int size) {
-    int zeroCrossings = 0;
-    int lastState = (data[0] >= 0) ? 1 : -1;
+float calcularFrecuencia(int *datos, int tamano) {
+    int crucesCero = 0;
+    int ultimoEstado = (datos[0] >= 0) ? 1 : -1;
 
-    for (int i = 1; i < size; i++) {
-        int currentState = (data[i] >= 0) ? 1 : -1;
-        if (currentState != lastState) {
-            zeroCrossings++;
-            lastState = currentState;
-            Serial.print("Cruce por cero en la muestra ");
-            Serial.println(i);
+    for (int i = 1; i < tamano; i++) {
+        int estadoActual = (datos[i] >= 0) ? 1 : -1;
+
+        if (estadoActual != ultimoEstado) {
+            crucesCero++;
+            ultimoEstado = estadoActual;
         }
     }
 
-    if (zeroCrossings == 0) {
+    if (crucesCero == 0) {
         Serial.println("No se detectaron cruces por cero.");
         return 0.0;
     }
 
-    int fullCycles = zeroCrossings / 2;
-    float period = (size * 5.0) / fullCycles;
-    float frequency = 1000.0 / period;
+    int ciclosCompletos = crucesCero / 2;
+    float periodo = (tamano * 5.0) / ciclosCompletos;
+    float frecuencia = 1000.0 / periodo;
 
-    Serial.print("Frecuencia calculada: ");
-    Serial.println(frequency);
-
-    return frequency;
+    return frecuencia;
 }
 
-float calcularAmplitud(int *data, int size) {
-    int maxVal = 0;
-    int minVal = 1023;
+float calcularAmplitud(int *datos, int tamano) {
+    int valorMax = 0;
+    int valorMin = 1023;
     
-    for (int i = 0; i < size; i++) {
-        if (data[i] > maxVal) maxVal = data[i];
-        if (data[i] < minVal) minVal = data[i];
+    for (int i = 0; i < tamano; i++) {
+        if (datos[i] > valorMax) valorMax = datos[i];
+        if (datos[i] < valorMin) valorMin = datos[i];
     }
     
-    return (maxVal - minVal) * (5.0 / 1023.0);
+    return (valorMax - valorMin) * (5.0 / 1023.0);
 }
 
-void identificarOnda(int *data, int size) {
-    int highCount = 0, lowCount = 0;
-    bool isSquare = true;
-    bool isSine = true;
+void identificarOnda(int *datos, int tamano) {
+    int valorMax = 0, valorMin = 1023;
+    int cuentaTransiciones = 0;
+    int deltaMax = 0;
+    int deltasConsistentes = 0;
+    int cambiosDireccion = 0;
+    bool esSenoidal = true;
+    bool esCuadrada = true;
+    bool esTriangular = true;
 
-    for (int i = 1; i < size; i++) {
-        if (data[i] > 800) {
-            highCount++;
-            if (data[i - 1] <= 800 && highCount > 1) {
-                lowCount = 0;  
-            }
-        } else if (data[i] < 200) {
-            lowCount++;
-            if (data[i - 1] >= 200 && lowCount > 1) {
-                highCount = 0;  
-            }
+    for (int i = 0; i < tamano; i++) {
+        if (datos[i] > valorMax) valorMax = datos[i];
+        if (datos[i] < valorMin) valorMin = datos[i];
+    }
+
+    int umbral = (valorMax + valorMin) / 2;
+    int histeresis = (valorMax - valorMin) * 0.1;
+
+    int deltaAnterior = datos[1] - datos[0];
+
+    for (int i = 1; i < tamano; i++) {
+        int delta = datos[i] - datos[i - 1];
+        bool estadoActual = (datos[i] > umbral + histeresis) || 
+                            (datos[i] > umbral - histeresis && (datos[i - 1] > umbral + histeresis));
+        
+        if (estadoActual != (datos[i - 1] > umbral)) {
+            cuentaTransiciones++;
+        }
+
+        if (delta * deltaAnterior > 0) {
+            deltasConsistentes++;
         } else {
-            isSquare = false;
-            break;
+            cambiosDireccion++;
+            deltaAnterior = delta;
+        }
+
+        if (delta < 0) delta = -delta;
+        if (delta > deltaMax) deltaMax = delta;
+
+        if (delta > (valorMax - valorMin) * 0.2) {
+            esSenoidal = false;
         }
     }
 
-    for (int i = 1; i < size; i++) {
-        if (abs(data[i] - data[i-1]) > 200) {
-            isSine = false;
-            break;
-        }
+    if (cambiosDireccion > 2 || deltasConsistentes < tamano * 0.7) {
+        esTriangular = false;
+    }
+
+    if (cuentaTransiciones < 2 || deltaMax < (valorMax - valorMin) * 0.3) {
+        esCuadrada = false;
     }
 
     lcd.clear();
     lcd.setCursor(0, 0);
 
-    if (isSquare) {
+    if (esCuadrada) {
         lcd.print("Onda cuadrada");
         Serial.println("Onda cuadrada detectada.");
-    } else if (isSine) {
+    } else if (esTriangular) {
+        lcd.print("Onda triangular");
+        Serial.println("Onda triangular detectada.");
+    } else if (esSenoidal) {
         lcd.print("Onda senoidal");
         Serial.println("Onda senoidal detectada.");
     } else {
-        lcd.print("Desconocida");
-        Serial.println("Desconocida");
+        lcd.print("Onda desconocida");
+        Serial.println("Onda desconocida.");
     }
-
-    delay(2000);  
+    delay(2000);
 }
